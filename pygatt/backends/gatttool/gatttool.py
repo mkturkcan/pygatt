@@ -429,39 +429,42 @@ class GATTToolBackend(BLEBackend):
 
     def _save_charecteristic_callback(self, event):
         match = event["match"]
+        unmatched = event["before"] + event["after"]
+        m = re.findall(ur"handle: 0x([a-fA-F0-9]{4}), char properties: 0x[a-fA-F0-9]{2}, char value handle: 0x([a-fA-F0-9]{4}), uuid: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", repr(unmatched))
+        match = m
         try:
-            value_handle = int(match.group(2), 16)
-            char_uuid = match.group(3).strip().decode('ascii')
-            self._characteristics[UUID(char_uuid)] = Characteristic(
-                char_uuid, value_handle
-            )
-            log.debug(
-                "Found characteristic %s, value handle: 0x%x",
-                char_uuid,
-                value_handle
-            )
+            for m in match:
+                value_handle = int(m[1], 16)
+                char_uuid = m[2].strip().decode('ascii')
+                self._characteristics[UUID(char_uuid)] = Characteristic(
+                    char_uuid, value_handle
+                )
+                log.debug(
+                    "Found characteristic %s, value handle: 0x%x",
+                    char_uuid,
+                    value_handle
+                )
         except AttributeError:
             pass
 
     @at_most_one_device
-    def discover_characteristics(self, timeout=5):
+    def discover_characteristics(self, timeout=15):
         self._characteristics = {}
         self._receiver.register_callback(
             "discover",
             self._save_charecteristic_callback,
         )
         self.sendline('characteristics')
-
         max_time = time.time() + timeout
         while not self._characteristics and time.time() < max_time:
-            time.sleep(.5)
-
+            time.sleep(1.5)
+        if not self._characteristics:
+            raise NotConnectedError("Characteristic discovery failed")
         # Sleep one extra second in case we caught characteristic
         # in the middle
         time.sleep(1)
 
-        if not self._characteristics:
-            raise NotConnectedError("Characteristic discovery failed")
+
 
         return self._characteristics
 
